@@ -1,17 +1,23 @@
-require("dotenv").config();
-const { GatewayIntentBits } = require("discord-api-types/v10");
-const { Events, Client } = require("discord.js");
-const { joinVoiceChannel, VoiceConnectionStatus } = require("@discordjs/voice");
-const {
+import dotenv from 'dotenv';
+dotenv.config();
+import { GatewayIntentBits } from 'discord-api-types/v10';
+import { Events, Client } from 'discord.js';
+import { joinVoiceChannel, VoiceConnectionStatus } from '@discordjs/voice';
+import {
     createAudioResource,
     StreamType,
     AudioPlayerStatus,
     createAudioPlayer,
     EndBehaviorType,
-  } = require("@discordjs/voice");
-const { AssemblyAI } = require("assemblyai");
-const assemblyAi = new AssemblyAI({ apiKey: process.env.ASSEMBLYAI_API_KEY })
-const prism = require("prism-media")
+} from '@discordjs/voice';
+import prism from 'prism-media';
+import { transcribeAudio } from './modules/assembly.js';
+import fs from 'fs';
+
+dotenv.config();
+
+const INPUT_AUDIO_FILE_NAME = "./audio/input.wav"
+const OUTPUT_AUDIO_FILE_NAME = "./audio/output.mp3"
 
 const client = new Client({
   intents: [
@@ -21,10 +27,6 @@ const client = new Client({
     GatewayIntentBits.Guilds,
   ],
 });
-
-const transcriber = assemblyAi.realtime.transcriber({
-    sampleRate: 48000 //Match sample rate of discord audio
-})
 
 client.on(Events.ClientReady, () => console.log("Ready!"));
 
@@ -38,9 +40,9 @@ void client.login(process.env.DISCORD_TOKEN);
 
 client.on(Events.MessageCreate, async (message) => {
   // Check if the message is the join command
-  if (message.content.toLowerCase() === "!kommran") {
+  if (message.content.toLowerCase() === "!kolja") {
     // Check if user is in a voice channel
-    channel = message.member.voice.channel;
+    const channel = message.member.voice.channel;
     if (channel) {
       const connection = joinVoiceChannel({
         channelId: channel.id,
@@ -53,7 +55,7 @@ client.on(Events.MessageCreate, async (message) => {
       connection.on(VoiceConnectionStatus.Ready, () => {
         message.reply(`Joined voice channel: ${channel.name}!`);
         // Call a function that handles listening and responding to the user
-        listenAndRespond(connection, receiver, message);
+        listenAndRespond(connection, receiver, message.author.id);
       });
     } else {
       message.reply("You need to join a voice channel first!");
@@ -61,46 +63,28 @@ client.on(Events.MessageCreate, async (message) => {
   }
 });
 
-async function listenAndRespond(connection, receiver, message) {
-    const audioStream = receiver.subscribe(message.author.id, {
+async function listenAndRespond(connection, receiver, userId) {
+    const audioStream = receiver.subscribe(userId, {
       end: {
         behavior: EndBehaviorType.AfterSilence,
         duration: 1000,
       },
     });
 
-    transcriber.on("open", ({ sessionId }) => {
-        console.log(`Real-time session opened with ID: ${sessionId}`);
-      });
-      
-      transcriber.on("error", (error) => {
-        console.error("Real-time transcription error:", error);
-      });
-      
-      transcriber.on("close", (code, reason) => {
-        console.log("Real-time session closed:", code, reason);
-        // Process the final accumulated transcript here
-      });
-      
-      var transcription = "";
-      transcriber.on("transcript", (transcript) => {
-        if (transcript.message_type === "FinalTranscript") {
-          console.log("Final:", transcript.text);
-          transcription += transcript.text + " "; // Append to the full message
-        }
-      });
-      
-      // Connect to the real-time transcription service
-      await transcriber.connect();
+    const opusDecoder = new prism.opus.Decoder({
+        rate: 48000,
+        channels: 1
+    })
 
-      const opusDecoder = new prism.opus.Decoder({ reate: 48000, channels: 1 });
-      audioStream.pipe(opusDecoder).on("data", (chunk) => {
-        transcriber.sendAudio(chunk);
-      })
+    const outputStream = fs.createWriteStream("./audio/input.pcm");
 
-      //Handle disconnection
-      audioStream.on("end", async () => {
-        await transcriber.close();
-        console.log("Final text:", transcription);
-      })
+    audioStream.pipe(opusDecoder).pipe(outputStream);
+
+    audioStream.on('end', async () => {
+        console.log("Stopped recording");
+        outputStream.end()
+        const inputText = await transcribeAudio(INPUT_AUDIO_FILE_NAME);
+        console.log("transcribed audio", inputText);
+    })
+
   }
