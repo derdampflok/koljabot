@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 import { GatewayIntentBits } from 'discord-api-types/v10';
 import { Events, Client } from 'discord.js';
-import { joinVoiceChannel, VoiceConnectionStatus } from '@discordjs/voice';
+import { getVoiceConnection, joinVoiceChannel, VoiceConnectionStatus } from '@discordjs/voice';
 import {
     createAudioResource,
     StreamType,
@@ -15,6 +15,7 @@ import { transcribeAudio } from './modules/assembly.js';
 import fs from 'fs';
 import ffmpeg from 'fluent-ffmpeg'
 import { sendTextToOpenAi } from './modules/openai.js';
+import { convertTextToSpeech } from './modules/elevenlabs.js';
 
 dotenv.config();
 
@@ -102,7 +103,25 @@ async function listenAndRespond(connection, receiver, message) {
                 console.log("transcribed audio", inputText);
                 const outputText = await sendTextToOpenAi(inputText);
                 console.log("Response from OpenAI", outputText);
-                message.reply(outputText);
+                const audioPath = await convertTextToSpeech(outputText);
+                if (audioPath) {
+                    const audioResource = createAudioResource(audioPath, {
+                        inputType: StreamType.Arbitrary,
+                      });
+                      const player = createAudioPlayer();
+                      player.play(audioResource);
+                      connection.subscribe(player);
+                    
+                      player.on(AudioPlayerStatus.Idle, () => {
+                        console.log("Finished playing audio response.");
+                        player.stop();
+                        getVoiceConnection(message.guild.id).destroy()
+                        // Listen for the next user query
+                        // listenAndRespond(connection, receiver, message);
+                      });
+                }
+                // message.reply(outputText);
+                // getVoiceConnection(message.guild.id).destroy()
             })
             .on('error', (err) => {
                 console.error('ffmpeg error:', err)
