@@ -83,6 +83,7 @@ async function listenAndRespond(connection, receiver, userId) {
     audioStream.on('end', async () => {
         console.log("Stopped recording");
         outputStream.end()
+        // TODO convert pcm to wav
         const inputText = await transcribeAudio(INPUT_AUDIO_FILE_NAME);
         console.log("transcribed audio", inputText);
     })
