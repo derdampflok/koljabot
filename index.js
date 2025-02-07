@@ -57,7 +57,7 @@ client.on(Events.MessageCreate, async (message) => {
       const receiver = connection.receiver;
 
       connection.on(VoiceConnectionStatus.Ready, () => {
-        message.reply(`Joined voice channel: ${channel.name}!`);
+        // message.reply(`Joined voice channel: ${channel.name}!`);
         // Call a function that handles listening and responding to the user
         listenAndRespond(connection, receiver, message);
       });
