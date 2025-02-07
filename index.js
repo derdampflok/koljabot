@@ -13,11 +13,13 @@ import {
 import prism from 'prism-media';
 import { transcribeAudio } from './modules/assembly.js';
 import fs from 'fs';
+import ffmpeg from 'fluent-ffmpeg'
 
 dotenv.config();
 
 const INPUT_AUDIO_FILE_NAME = "./audio/input.wav"
 const OUTPUT_AUDIO_FILE_NAME = "./audio/output.mp3"
+const PCM_FILE_PATH = "./audio/input.pcm"
 
 const client = new Client({
   intents: [
@@ -76,16 +78,33 @@ async function listenAndRespond(connection, receiver, userId) {
         channels: 1
     })
 
-    const outputStream = fs.createWriteStream("./audio/input.pcm");
+    const outputStream = fs.createWriteStream(PCM_FILE_PATH);
 
     audioStream.pipe(opusDecoder).pipe(outputStream);
 
     audioStream.on('end', async () => {
         console.log("Stopped recording");
         outputStream.end()
-        // TODO convert pcm to wav
-        const inputText = await transcribeAudio(INPUT_AUDIO_FILE_NAME);
-        console.log("transcribed audio", inputText);
+        // convert pcm to wav
+        ffmpeg()
+            .input(PCM_FILE_PATH)
+            .inputFormat('s16le')
+            .audioFrequency(48000)
+            .audioChannels(1)
+            .audioCodec('pcm_s16le')
+            .save(INPUT_AUDIO_FILE_NAME)
+            .on('end', async () => {
+                console.log('Coverted pcm to wav')
+                fs.unlinkSync(PCM_FILE_PATH) // delete pcm file
+                const inputText = await transcribeAudio(INPUT_AUDIO_FILE_NAME);
+                fs.unlinkSync(INPUT_AUDIO_FILE_NAME); // delete input audio file
+                console.log("transcribed audio", inputText);
+            })
+            .on('error', (err) => {
+                console.error('ffmpeg error:', err)
+            })
+
+        
     })
 
   }
