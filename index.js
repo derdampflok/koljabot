@@ -14,6 +14,7 @@ import prism from 'prism-media';
 import { transcribeAudio } from './modules/assembly.js';
 import fs from 'fs';
 import ffmpeg from 'fluent-ffmpeg'
+import { sendTextToOpenAi } from './modules/openai.js';
 
 dotenv.config();
 
@@ -57,7 +58,7 @@ client.on(Events.MessageCreate, async (message) => {
       connection.on(VoiceConnectionStatus.Ready, () => {
         message.reply(`Joined voice channel: ${channel.name}!`);
         // Call a function that handles listening and responding to the user
-        listenAndRespond(connection, receiver, message.author.id);
+        listenAndRespond(connection, receiver, message);
       });
     } else {
       message.reply("You need to join a voice channel first!");
@@ -65,11 +66,11 @@ client.on(Events.MessageCreate, async (message) => {
   }
 });
 
-async function listenAndRespond(connection, receiver, userId) {
-    const audioStream = receiver.subscribe(userId, {
+async function listenAndRespond(connection, receiver, message) {
+    const audioStream = receiver.subscribe(message.author.id, {
       end: {
         behavior: EndBehaviorType.AfterSilence,
-        duration: 1000,
+        duration: 2000,
       },
     });
 
@@ -99,6 +100,9 @@ async function listenAndRespond(connection, receiver, userId) {
                 const inputText = await transcribeAudio(INPUT_AUDIO_FILE_NAME);
                 fs.unlinkSync(INPUT_AUDIO_FILE_NAME); // delete input audio file
                 console.log("transcribed audio", inputText);
+                const outputText = await sendTextToOpenAi(inputText);
+                console.log("Response from OpenAI", outputText);
+                message.reply(outputText);
             })
             .on('error', (err) => {
                 console.error('ffmpeg error:', err)
